@@ -9,13 +9,6 @@ ui <- fluidPage(
     titlePanel("R_analyze"),
     sidebarLayout(
         sidebarPanel(
-            # sliderInput(
-            #   inputId = "slider_score",
-            #   label = "数値を選択してください",
-            #   min = 1,
-            #   max = 100,
-            #   value = 50
-            # ),
             fileInput(
                 "file_upload", "csvファイルをアップロードをしてください",
                 accept = c("text/csv", ".csv")
@@ -45,19 +38,28 @@ ui <- fluidPage(
                     # タブ1: データプレビュー
                     tabPanel("データプレビュー",
                              h2("データの先頭と末尾"),
-                             tableOutput("data_preview")
+                             tableOutput("data_preview"),
+                             hr(),
+                             h3("使用された R コード (ggplot2)"),
+                             htmlOutput("preview_code_output")
                     ),
                     
                     # タブ2: ヒストグラム
                     tabPanel("ヒストグラム",
                              h2("ヒストグラム"),
-                             plotOutput("histogram_plot")
+                             plotOutput("histogram_plot"),
+                             hr(),
+                             h3("使用された R コード (ggplot2)"),
+                             htmlOutput("hist_code_output")
                     ),
                     
                     #　タブ3:散布図
                     tabPanel("散布図",
                              h2("散布図"),
-                             plotOutput("scatter_plot")
+                             plotOutput("scatter_plot"),
+                             hr(),
+                             h3("使用された R コード (ggplot2)"),
+                             htmlOutput("scatter_code_output")
                     ),
                     
                     #  タブ4:箱ひげ図
@@ -75,17 +77,9 @@ ui <- fluidPage(
 
 ###　バックエンド
 server <- function(input, output) {
-    # ★★★ リアクティブな出力ロジック ★★★
-    # output$selected_value にレンダリング（描画）するテキストを定義
-    # output$selected_value <- renderText({
-    #   
-    #   # input$my_slider は、ユーザーがスライダーで選んだ値（リアクティブな値）
-    #   # このコードブロックは、input$my_slider が変更されるたびに自動で再実行されます
-    #   paste("あなたが選んだ値は", input$slider_score, "です。")
-    # })
     
     data_input <- reactive({
-        # req() は、ファイルがアップロードされるまで処理を待機させます
+        # req() は、ファイルがアップロードされるまで処理を待機させる
         req(input$file_upload)
         
         # CSVファイルを読み込む
@@ -170,6 +164,24 @@ server <- function(input, output) {
         return (df_bind)
     })
     
+    output$preview_code_output <- renderUI({
+        # データがロードされるまで待機（データプレビューテーブルと同じ）
+        req(data_input())
+        
+        # Rコード文字列を生成
+        code_str <- paste0(
+            "# データの先頭（10行）を表示", "\n",
+            "head(df, n = 10)", "\n\n",
+            "# データの末尾（4行）を表示", "\n",
+            "tail(df, n = 4)"
+        )
+        
+        # HTMLタグでコードを囲んで出力
+        code_html <- paste0("<pre><code>", code_str, "</code></pre>")
+        return(HTML(code_html)) 
+    })
+    
+    
     ##　ヒストグラムロジック
     
     #renderPlotはヒストグラム表示ロジック
@@ -195,6 +207,32 @@ server <- function(input, output) {
         print(p) #これないとrenderPlotは動かない
     })
     
+    output$hist_code_output <- renderUI({
+        req(input$hist_var)
+        
+        var_name <- input$hist_var
+        
+        # Rコード文字列を生成 (以前と同じ)
+        code_str <- paste0(
+            "# データの読み込みは省略しています", "\n",
+            "ggplot(データ名, aes(x = ", var_name, ")) +", "\n",
+            "  geom_histogram(bins = 45, fill = \"skyblue\", color = \"white\") +", "\n",
+            "  labs(", "\n",
+            "    title = \"", var_name, " の度数分布\",", "\n",
+            "    x = \"", var_name, "\",", "\n",
+            "    y = \"度数\"", "\n",
+            "  ) +", "\n",
+            "  theme_minimal()"
+        )
+        
+        # preタグ：改行とスペースを保持
+        # codeタグ：コードであることを示す
+        code_html <- paste0("<pre><code>", code_str, "</code></pre>")
+        
+        # HTML()で、Rがこの文字列をHTMLコードとして解釈するように指定
+        return(HTML(code_html)) 
+    })
+    
     ##　散布図ロジック
     
     output$scatter_plot <- renderPlot({
@@ -214,6 +252,34 @@ server <- function(input, output) {
             )
         
         print(p)
+    })
+    
+    output$scatter_code_output <- renderUI({
+        # データの有無と、X軸・Y軸の入力値の有無をチェック
+        validate(
+            need(input$scatter_xlab, NULL),
+            need(input$scatter_ylab, NULL)
+        )
+        
+        x_lab <- input$scatter_xlab
+        y_lab <- input$scatter_ylab
+        
+        # Rコード文字列を生成
+        code_str <- paste0(
+            "# データの読み込みは省略しています", "\n",
+            "ggplot(data, aes(x = ", x_lab, ", y = ", y_lab, ")) +", "\n",
+            "  geom_point() +", "\n",
+            "  labs(", "\n",
+            "    title = \"", x_lab, " vs ", y_lab, " の散布図\",", "\n",
+            "    x = \"", x_lab, "\",", "\n",
+            "    y = \"", y_lab, "\"", "\n",
+            "  ) +", "\n",
+            "  theme_minimal()"
+        )
+        
+        # HTMLタグでコードを囲んで出力
+        code_html <- paste0("<pre><code>", code_str, "</code></pre>")
+        return(HTML(code_html)) 
     })
     
     ##　箱ひげ図
