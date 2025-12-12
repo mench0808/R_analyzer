@@ -21,17 +21,8 @@ ui <- fluidPage(
                 accept = c("text/csv", ".csv")
             ),
             hr(),
-            #ヒストグラムの行列を指定するためのinputを形成
-            h3("ヒストグラムにしたい要素を選択してください"),
-            uiOutput("hist_var_selector"),
-            hr(),
-            
-            h3("散布図にしたい要素を2つ選択してください"),
-            h4("縦軸の要素を選択してください"),
-            uiOutput("scatter_ylab_selector"),
-            
-            h4("横軸の要素を選択してください"),
-            uiOutput("scatter_xlab_selector"),
+            #　UIの動的制御
+            uiOutput("dynamic_sidebar_ui"),
         ),
         mainPanel(
             # h3("選択された値"),
@@ -85,6 +76,30 @@ server <- function(input, output) {
         #name(df) <- make.names(names(df), unique = TRUE)
         
         return(df)
+    })
+    ## 動的画面切り替えロジック
+    output$dynamic_sidebar_ui <- renderUI({
+        current_tab <- input$main_tabs 
+        req(col_names()) 
+        
+        if (current_tab == "ヒストグラム") {
+            tagList( 
+                h3("📈 ヒストグラム設定"),
+                selectInput("hist_var", "ヒストグラムの変数を選択:", 
+                            choices = col_names(), 
+                            selected = col_names()[1])
+            )
+        } else if (current_tab == "散布図") {
+            tagList(
+                h3("📊 散布図設定"),
+                selectInput("scatter_ylab", "縦軸 (Y) の変数を選択:", 
+                            choices = col_names(), 
+                            selected = col_names()[2]), 
+                selectInput("scatter_xlab", "横軸 (X) の変数を選択:", 
+                            choices = col_names(), 
+                            selected = col_names()[1])
+            )
+        } 
     })
     
     ##データプレビューロジック
