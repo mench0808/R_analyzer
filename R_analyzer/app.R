@@ -6,7 +6,7 @@ library(shinythemes)
 
 ### フロントエンド
 ui <- fluidPage(
-    titlePanel("Shiny application"),
+    titlePanel("R_analyze"),
     sidebarLayout(
         sidebarPanel(
             # sliderInput(
@@ -25,27 +25,47 @@ ui <- fluidPage(
             uiOutput("dynamic_sidebar_ui"),
         ),
         mainPanel(
-            # h3("選択された値"),
-            # textOutput("selected_value"),
-            tabsetPanel( 
-                id = "main_tabs",
-                
-                # タブ1: データプレビュー
-                tabPanel("データプレビュー",
-                         h2("データの先頭と末尾"),
-                         tableOutput("data_preview")
-                ),
-                
-                # タブ2: ヒストグラム
-                tabPanel("ヒストグラム",
-                         h2("ヒストグラム"),
-                         plotOutput("histogram_plot")
-                ),
-                
-                #　タブ3:散布図
-                tabPanel("散布図",
-                         h2("散布図"),
-                         plotOutput("scatter_plot")
+            conditionalPanel(
+                condition = "output.data_loaded == false", # Serverからのフラグがfalseのとき
+                wellPanel(
+                    h1("📊 データ分析を開始する"),
+                    p("左側のサイドバーからCSVファイルをアップロードしてください。"),
+                    p("ファイルが読み込まれると、以下のタブが表示されます。")
+                )
+            ),
+            
+            conditionalPanel(
+                condition = "output.data_loaded == true", # Serverからのフラグがtrueのとき
+                tabsetPanel( 
+                    id = "main_tabs",
+                    
+                    # h3("選択された値"),
+                    # textOutput("selected_value"),
+                    
+                    # タブ1: データプレビュー
+                    tabPanel("データプレビュー",
+                             h2("データの先頭と末尾"),
+                             tableOutput("data_preview")
+                    ),
+                    
+                    # タブ2: ヒストグラム
+                    tabPanel("ヒストグラム",
+                             h2("ヒストグラム"),
+                             plotOutput("histogram_plot")
+                    ),
+                    
+                    #　タブ3:散布図
+                    tabPanel("散布図",
+                             h2("散布図"),
+                             plotOutput("scatter_plot")
+                    ),
+                    
+                    #  タブ4:箱ひげ図
+                    tabPanel("箱ひげ図",
+                             h2("箱ひげ図"),
+                             h2("この機能は好都合に未完成"),
+                             plotOutput("box_plot")
+                    )
                 )
             )
         )
@@ -53,7 +73,7 @@ ui <- fluidPage(
 )
 
 
-###バックエンド
+###　バックエンド
 server <- function(input, output) {
     # ★★★ リアクティブな出力ロジック ★★★
     # output$selected_value にレンダリング（描画）するテキストを定義
@@ -77,21 +97,40 @@ server <- function(input, output) {
         
         return(df)
     })
+    
+    # データ読み込み時に列名を取得しておく
+    col_names <- reactive({
+        # data_input()の結果（整形済みのデータフレーム）に依存する
+        req(data_input())
+        
+        # data_input() が df を返した時点で、列名を取得する
+        names(data_input()) 
+    })
+    
     ## 動的画面切り替えロジック
+    
+    output$data_loaded <- reactive({
+        # data_input()がエラーなく実行できる（＝ファイルがアップロードされた）場合に TRUE を返す
+        return(!is.null(data_input())) 
+    })
+    
+    # このフラグを conditionalPanel で使えるようにする設定
+    outputOptions(output, "data_loaded", suspendWhenHidden = FALSE)
+    
     output$dynamic_sidebar_ui <- renderUI({
+        req(data_input())
         current_tab <- input$main_tabs 
-        req(col_names()) 
         
         if (current_tab == "ヒストグラム") {
             tagList( 
-                h3("📈 ヒストグラム設定"),
+                h3("ヒストグラム設定"),
                 selectInput("hist_var", "ヒストグラムの変数を選択:", 
                             choices = col_names(), 
                             selected = col_names()[1])
             )
         } else if (current_tab == "散布図") {
             tagList(
-                h3("📊 散布図設定"),
+                h3("散布図設定"),
                 selectInput("scatter_ylab", "縦軸 (Y) の変数を選択:", 
                             choices = col_names(), 
                             selected = col_names()[2]), 
@@ -99,13 +138,26 @@ server <- function(input, output) {
                             choices = col_names(), 
                             selected = col_names()[1])
             )
-        } 
+        } else if (current_tab == "箱ひげ図") {
+            tagList(
+                h3("箱ひげ図設定"),
+                # selectInput("box_ylab", "縦軸 (Y) の変数を選択:", 
+                #             choices = col_names(), 
+                #             selected = col_names()[2]), 
+                # selectInput("box_xlab", "横軸 (X) の変数を選択:", 
+                #             choices = col_names(), 
+                #             selected = col_names()[1])
+                
+            )
+        }
     })
     
-    ##データプレビューロジック
+    ##　データプレビューロジック
     
     #renderTableはreactiveの派生系でdfを返すと勝手に図を作成してくれる
     output$data_preview <- renderTable({
+        
+        req(data_input())
         df <- data_input()
         df_head <- head(df, n=10)
         df_tail <- tail(df, n=4)
@@ -118,31 +170,15 @@ server <- function(input, output) {
         return (df_bind)
     })
     
-    # データ読み込み時に列名を取得しておく
-    col_names <- reactive({
-        # data_input()の結果（整形済みのデータフレーム）に依存する
-        req(data_input())
-        
-        # data_input() が df を返した時点で、列名を取得する
-        names(data_input()) 
-    })
-    
-    ##ヒストグラムロジック
-    
-    #renderUIは返り値をドロップダウンとかに変換してくれる
-    #出力されるものは全てoutputのカラムとして保存する。これがないと出力できない。
-    output$hist_var_selector <- renderUI({
-        selectInput("hist_var", "ヒストグラムの変数を選択 (数値列推奨):", 
-                    choices = col_names(), 
-                    selected = col_names()[1])
-    })
+    ##　ヒストグラムロジック
     
     #renderPlotはヒストグラム表示ロジック
     #最後必ずprintする必要あり
     output$histogram_plot <- renderPlot({
-        df <- data_input()
         
         req(input$hist_var)
+        df <- data_input()
+        # req(input$hist_var)
         hist_var_name <- input$hist_var
         
         #aes_stringは変数をxに代入する際に使用
@@ -159,25 +195,12 @@ server <- function(input, output) {
         print(p) #これないとrenderPlotは動かない
     })
     
-    ##散布図ロジック
-    output$scatter_ylab_selector <- renderUI({
-        selectInput("scatter_ylab", "散布図の縦軸の変数を選択 (数値列推奨):", 
-                    choices = col_names() 
-                    #selected = col_names()[1]
-        )
-    })
-    
-    output$scatter_xlab_selector <- renderUI({
-        selectInput("scatter_xlab", "散布図の横軸の変数を選択 (数値列推奨):", 
-                    choices = col_names() 
-                    #selected = col_names()[1]
-        )
-    })
+    ##　散布図ロジック
     
     output$scatter_plot <- renderPlot({
-        df <- data_input()
         
         req(input$scatter_xlab, input$scatter_ylab)
+        df <- data_input()
         
         x_lab <- input$scatter_xlab
         y_lab <- input$scatter_ylab
@@ -189,6 +212,31 @@ server <- function(input, output) {
                 x = x_lab,
                 y = y_lab
             )
+        
+        print(p)
+    })
+    
+    ##　箱ひげ図
+    
+    output$box_plot <- renderPlot({
+        df <- data.frame(
+            Group = factor(rep(c("A", "B", "C"), each = 10)), 
+            Value = c(runif(10, 10, 20), runif(10, 15, 25), runif(10, 20, 30)),
+            stringsAsFactors = FALSE
+        )
+        
+        x_lab <- "Group"
+        y_lab <- "Value"
+        
+        p <- ggplot(df, aes_string(x = x_lab, y = y_lab, fill = x_lab)) +
+            geom_boxplot() +
+            labs(
+                title = paste0("デモ箱ひげ図 (固定データ)"),
+                x = x_lab,
+                y = y_lab
+            ) +
+            theme_minimal() +
+            theme(legend.position = "none")
         
         print(p)
     })
